@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>feedback_bci_vr</name>
+  <version>0.0.0</version>
+  <description>The feedback_bci_vr package</description>
+  <maintainer email="paolo@todo.todo">Paolo</maintainer>
+  <license>TODO</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+  <depend>std_msgs</depend>
+  <depend>message_runtime</depend>
+  <depend>rosneuro_msgs</depend>
+</package>
