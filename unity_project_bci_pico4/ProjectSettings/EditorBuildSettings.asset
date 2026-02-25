@@ -6,8 +6,17 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Scenes/SampleScene.unity
-    guid: 99c9720ab356a0642a771bea13969a05
+    path: Assets/Scenes/Starting_Menu.unity
+    guid: 857ef0e0b4126f27791f490957d6c6dd
+  - enabled: 1
+    path: Assets/Scenes/BCI_CVSA.unity
+    guid: b7a004fc2778eaebc9d34ae54e2ab61c
+  - enabled: 1
+    path: Assets/Scenes/BCI_MI.unity
+    guid: dbbe2e8c0b6d8d75c8df252d0f12db43
+  - enabled: 1
+    path: Assets/Scenes/BCI_HYBRID.unity
+    guid: 48280958c5a4a771d81df5835b70d92e
   m_configObjects:
     Unity.XR.PXR.Settings: {fileID: 11400000, guid: ac1e484402b06fd75a28a05030e79959,
       type: 2}
