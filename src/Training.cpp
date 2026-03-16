@@ -10,10 +10,12 @@ Training::Training(void) : p_nh_("~") {
 Training::~Training(void) {}
 
 bool Training::configure(void) {
-
     this->name_ = "Training";
-    // Getting modality and the paradigm
-    std::string modality, paradigm, topic;
+
+    this->is_vr_ready_ = false;
+    this->sub_vr_ready_ = this->nh_.subscribe("/vr/status/ready", 1, &Training::onVrReady, this);
+    
+    std::string modality, paradigm, topic_normalized, topic_raw;
     if(this->p_nh_.getParam("modality", modality) == false) {
         ROS_ERROR("[%s] Parameter 'modality' is mandatory", this->name_.c_str());
         return false;
@@ -23,17 +25,21 @@ bool Training::configure(void) {
         return false;
     }
 
-    topic = "/" + paradigm + "/integrated/normalized";
+    topic_normalized = "/" + paradigm + "/neuroprediction/integrated/normalized";
+    topic_raw = "/" + paradigm + "/neuroprediction/integrated/raw";
     if(modality.compare("calibration") == 0) {
         this->modality_ = Modality::Calibration;
-        this->pub_probs_ = this->nh_.advertise<rosneuro_msgs::NeuroOutput>(topic, 1);
+        this->pub_probs_ = this->nh_.advertise<rosneuro_msgs::NeuroOutput>(topic_normalized, 1);
     } else if(modality.compare("evaluation") == 0) {
-        this->sub_probs_ = this->nh_.subscribe(topic, 1, &Training::on_received_data, this);
         this->modality_ = Modality::Evaluation;
+        this->pub_probs_ = this->nh_.advertise<rosneuro_msgs::NeuroOutput>(topic_normalized, 1);
+        this->sub_probs_ = this->nh_.subscribe(topic_raw, 1, &Training::on_received_data, this);
     } else {
         ROS_ERROR("[%s] Unknown modality provided", this->name_.c_str());
         return false;
     }
+
+    this->reset_integrator_ = this->nh_.serviceClient<std_srvs::Empty>("/integrator/reset");
 
     // Getting classes and trials
     if(this->p_nh_.getParam("classes", this->classes_) == false) {
@@ -41,7 +47,18 @@ bool Training::configure(void) {
         return false;
     } 
     this->nclasses_ = this->classes_.size();
-    this->thresholds_ = std::vector<float>(this->nclasses_, 1.0f);
+    if(this->modality_ == Modality::Calibration) {
+        this->thresholds_ = std::vector<float>(this->nclasses_, 1.0f);
+    } else {
+        if(this->p_nh_.getParam("thresholds", this->thresholds_) == false) {
+            ROS_ERROR("[%s] Parameter 'thresholds' is mandatory for evaluation modality", this->name_.c_str());
+            return false;
+        } 
+        if(this->thresholds_.size() != this->nclasses_) {
+            ROS_ERROR("[%s] Number of thresholds must be provided for each class", this->name_.c_str());
+            return false;
+        }
+    }
 
     if(this->p_nh_.getParam("trials", this->trials_per_class_) == false) {
         ROS_ERROR("[%s] Parameter 'trials' is mandatory", this->name_.c_str());
@@ -50,10 +67,6 @@ bool Training::configure(void) {
         ROS_ERROR("[%s] Number of trials per class must be provided for each class", this->name_.c_str());
         return false;
     }
-    
-    // Getting postive feedback parameter
-    this->p_nh_.param("positive_feedback", this->positive_feedback_, false);
-    ROS_WARN("[%s] Positive feedback is %s", this->name_.c_str(), this->positive_feedback_ ? "enabled" : "disabled");
 
     // Getting duration parameters
     ros::param::param("~duration/begin",            this->duration_.begin,             5000);
@@ -170,11 +183,65 @@ void Training::on_received_data(const rosneuro_msgs::NeuroOutput& msg) {
 
     // Set the new incoming data
     this->current_input_ = msg.softpredict.data;
+    this->seq_ = msg.header.seq;
 
     //std::cout << "Received data: " << this->current_input_[0] << " " << this->current_input_[1] << std::endl;  
 }
 
+void Training::onVrReady(const std_msgs::Bool::ConstPtr& msg) {
+    if (msg->data == true && !this->is_vr_ready_) {
+        this->is_vr_ready_ = true;
+        ROS_INFO("[]%s] VR environment is ready. Starting the protocol.", this->name_.c_str());
+    }
+}
+
+void Training::setprobs(std::vector<float> probs) {
+    rosneuro_msgs::NeuroOutput msg;
+
+    msg.header.seq = this->seq_;
+    msg.header.stamp = ros::Time::now();
+    msg.decoder.classes = this->classes_;
+    msg.softpredict.data = probs;
+    std::vector<int> hardpredict(this->classes_.size(), 0);
+    int max_idx = std::distance(probs.begin(), std::max_element(probs.begin(), probs.end()));
+    if(probs[max_idx] >= this->thresholds_[max_idx]) {
+        hardpredict[max_idx] = 1;
+    }
+    msg.hardpredict.data = hardpredict;
+
+    this->pub_probs_.publish(msg);
+}
+
+std::vector<float>  Training::normalize_input(const std::vector<float>& input) {
+    std::vector<float> normalized_output(input.size(), 0.0f);
+
+    for (size_t i = 0; i < input.size(); ++i) {
+        if (this->thresholds_[i] > 0.0f) {
+            float mapped_val = input[i] / this->thresholds_[i];
+            
+            normalized_output[i] = std::max(0.0f, std::min(1.0f, mapped_val));
+        }
+    }
+
+    return normalized_output;
+}
+
 void Training::run(void){
+    ROS_INFO("[%s] Waiting for VR environment to be ready...", this->name_.c_str());
+    ros::Rate r(10);
+    while(ros::ok() && this->is_vr_ready_ == false) {
+        ros::spinOnce();
+        r.sleep();
+    }
+
+    if(this->is_vr_ready_ == true) {
+        this->bci_protocol();
+    } else {
+        ROS_WARN("[%s] VR environment is not ready. Protocol will not start.", this->name_.c_str());
+    }
+}
+
+void Training::bci_protocol(void){
     int                    trialnumber;
     int                    trialclass;
     int                    trialduration;
@@ -198,9 +265,6 @@ void Training::run(void){
     // Begin
     ROS_INFO("[%s] Protocol BCI started", this->name_.c_str());
     this->sleep(this->duration_.begin);
-
-    // open the feedback audio, with the default values: all wav file have the same sample rate and channels
-    this->openAudioDevice();
     
     for(int i = 0; i < this->trialsequence_.size(); i++) {
         // Getting trial information
@@ -208,27 +272,14 @@ void Training::run(void){
         Trial t = this->trialsequence_.gettrial(i);
         trialclass     = t.classid;
         trialduration  = t.duration;
-        
-        if(this->fake_rest_ && this->modality_ == Modality::Calibration && trialclass == Events::Fake_rest){
-            std::random_device rd; 
-            std::mt19937 gen(rd());
-            std::uniform_int_distribution<int> dist(0, this->nclasses_-1);
-            idx_class = dist(gen); 
-            fake_trialclass = this->classes_.at(idx_class);
-            trialdirection = this->class2direction(fake_trialclass);
-            trialthreshold = this->direction2threshold(trialdirection);
-            other_idx_classes = idxs_classes;
-            other_idx_classes.erase(std::remove(other_idx_classes.begin(), other_idx_classes.end(), idx_class), other_idx_classes.end());
-        }else{
-            idx_class      = this->class2index(trialclass); 
-            trialdirection = this->class2direction(trialclass);
-            trialthreshold = this->direction2threshold(trialdirection);
-        }
+        idx_class      = this->class2index(trialclass); 
+        trialdirection = this->class2direction(trialclass);
+        trialthreshold = this->direction2threshold(trialdirection);
         trialhit      = -1;
-        this->trial_ok_ = 1;
+        int c_time;
 
         if(this->modality_ == Modality::Calibration) {
-            if(trialclass == Events::Fake_rest && this->fake_rest_){
+            if(trialclass == Events::Rest){
                 autopilot = &sinepilot;
             }else{
                 autopilot = &linearpilot;
@@ -243,55 +294,17 @@ void Training::run(void){
 
         if(ros::ok() == false || this->user_quit_ == true) break;
         
-
         /* FIXATION */
         this->setevent(Events::Fixation);
-        this->show_fixation();
         this->sleep(this->duration_.fixation);
-        this->hide_fixation();
         this->setevent(Events::Fixation + Events::Off);
 
         if(ros::ok() == false || this->user_quit_ == true) break;
 
 
         /* CUE */
-        this->show_center();
-        int idx_sampleAudio;
-        size_t sampleAudio, bufferAudioSize, n_sampleAudio;
-        if(this->fake_rest_ && this->modality_ == Modality::Calibration && trialclass == Events::Fake_rest){
-            this->setevent(trialclass);
-            this->sleep(this->duration_.iti);
-            this->setevent(fake_trialclass);
-        }else{
-            this->setevent(trialclass);
-        }
-        this->timer_.tic();
-        int c_time;
-        if(this->audio_cue_){
-            if(this->fake_rest_ && this->modality_ == Modality::Calibration && trialclass == Events::Fake_rest){
-                this->loadWAVFile(this->audio_path_ + "/" + std::to_string(fake_trialclass) + ".wav");
-            }else{
-                this->loadWAVFile(this->audio_path_ + "/" + std::to_string(trialclass) + ".wav");
-            }
-            this->setAudio(idx_sampleAudio, sampleAudio, bufferAudioSize, n_sampleAudio);
-            while((idx_sampleAudio + n_sampleAudio) * this->channels_audio_ <= this->buffer_audio_full_.size()){
-                this->fillAudioBuffer(idx_sampleAudio, n_sampleAudio, true);
-                ao_play(this->device_audio_, reinterpret_cast<char*>(this->buffer_audio_played_.data()), bufferAudioSize * sizeof(short));
-            }
-            c_time = this->timer_.toc();
-            if(this->duration_.cue - c_time > 0){
-                ROS_INFO("[Training_CVSA] Cue added time: %d ms", c_time);
-                this->sleep(this->duration_.cue - c_time);
-            }
-        }else{
-            this->show_cue(trialdirection);
-            this->sleep(this->duration_.cue);
-            this->hide_cue();
-        }
-        if(this->fake_rest_ && this->modality_ == Modality::Calibration && trialclass == Events::Fake_rest){
-            this->sleep(this->duration_.iti);
-            this->setevent(fake_trialclass + Events::Off);
-        }
+        this->setevent(trialclass);
+        this->sleep(this->duration_.cue);
         this->setevent(trialclass + Events::Off);
         
         if(ros::ok() == false || this->user_quit_ == true) break;
@@ -306,45 +319,23 @@ void Training::run(void){
         // Send cf event
         this->setevent(Events::CFeedback);
 
-        // Start the sound feedback
-        this->loadWAVFile(this->audio_path_ + "/" + this->audio_name_cf_);
-        this->setAudio(idx_sampleAudio, sampleAudio, bufferAudioSize, n_sampleAudio);
-
         // Set up initial probabilities
-        this->current_input_ = std::vector<float>(this->nactiveclasses_, 0.0f); 
+        if(this->modality_ == Modality::Evaluation) {
+            std_srvs::Empty srv;
+            this->reset_integrator_.call(srv);
+        }else{
+            this->current_input_ = std::vector<float>(this->nclasses_, 0.5f); 
+        }
 
-        while(ros::ok() && this->user_quit_ == false && trialhit == -1 && idx_sampleAudio + n_sampleAudio < this->buffer_audio_full_.size()) {
+        while(ros::ok() && this->user_quit_ == false && trialhit == -1) {
 
             c_time = this->timer_.toc();
-            if(this->modality_ == Modality::Calibration) {
-                this->fillAudioBuffer(idx_sampleAudio, n_sampleAudio, false);
-                ao_play(this->device_audio_, reinterpret_cast<char*>(this->buffer_audio_played_.data()), bufferAudioSize * sizeof(short));
-                if(trialclass == Events::Fake_rest && this->fake_rest_){
-                    float step = autopilot->step();
-                    if((step <= 0 && this->current_input_[idx_class] == 0.0f && this->current_input_[other_idx_classes[0]] == 0.0f) ||
-                       (step >= 0 && this->current_input_[other_idx_classes[0]] > 0.0f) ||
-                       (step <= 0 && this->current_input_[idx_class] == 0.0f)){
-                        this->current_input_[other_idx_classes[0]] = this->current_input_[other_idx_classes[0]] + (-1)*step; 
-                    }else{
-                        this->current_input_[idx_class] = this->current_input_[idx_class] + step;
-                    }
-                    //ROS_INFO("Probabilities: %f %f Thresholds: %f %f", this->current_input_[0], this->current_input_[1], this->thresholds_[0], this->thresholds_[1]);
-                }else{
-                    this->current_input_[idx_class] = this->current_input_[idx_class] + autopilot->step();
-                }
+            if(this->modality_ == Modality::Calibration) { // PUBLISH THE PROBABILITIES
+                this->current_input_[idx_class] = this->current_input_[idx_class] + autopilot->step()/2.0f;
+                this->setprobs(this->normalize_input(this->current_input_));
+                this->seq_++; 
             } else if(this->modality_ == Modality::Evaluation) {
-                if(!this->positive_feedback_){
-                    this->fillAudioBuffer(idx_sampleAudio, n_sampleAudio, false);
-                    ao_play(this->device_audio_, reinterpret_cast<char*>(this->buffer_audio_played_.data()), bufferAudioSize * sizeof(short));
-                }else{
-                    std::vector<float> input_norm = this->normalize4audio(this->current_input_);
-                    auto maxElemIter = std::max_element(input_norm.begin(), input_norm.end());
-                    int idx_maxElem = std::distance(input_norm.begin(), maxElemIter);
-                    if(idx_maxElem == idx_class){
-                        this->fillAudioBuffer(idx_sampleAudio, n_sampleAudio, false);
-                        ao_play(this->device_audio_, reinterpret_cast<char*>(this->buffer_audio_played_.data()), bufferAudioSize * sizeof(short));
-                    }
-                }
+                this->setprobs(this->normalize_input(this->current_input_));
                 //ROS_INFO("Probabilities: %f %f Thresholds: %f %f", this->current_input_[0], this->current_input_[1], this->thresholds_[0], this->thresholds_[1]);
             }
 
@@ -357,7 +348,6 @@ void Training::run(void){
             r.sleep();
             ros::spinOnce();
         }
-        this->play_fadeout(idx_sampleAudio, n_sampleAudio, bufferAudioSize, false);
         this->setevent(Events::CFeedback + Events::Off);
         if(ros::ok() == false || this->user_quit_ == true) break;
         
@@ -365,7 +355,7 @@ void Training::run(void){
         /* BOOM */
         if(trialdirection == trialhit){
             boomevent = Events::Hit;
-        }else if(trialhit >= 0 && trialhit < this->nactiveclasses_){
+        }else if(trialhit != this->nclasses_){
             boomevent = Events::Miss;
         }else{
             if(trialclass != Events::Rest){
@@ -374,107 +364,63 @@ void Training::run(void){
                 boomevent = Events::Hit; // consider a hit if the rest class is presented and timeout occurs
             }
         }
-        // for the robot motion
-        if(this->robot_control_){
-            this->setevent(boomevent);
-            this->show_boom(trialdirection, trialhit);
-            this->timer_.tic();
-            std_srvs::Trigger srv;
-            while(true){
-                this->srv_robot_moving_.call(srv.request, srv.response);
-                if(!srv.response.success){
-                    break;
-                }else{
-                    ROS_WARN_ONCE("[Training_CVSA] Robot is moving. Waiting for the robot to stop.");
-                }
-                this->sleep(500);
-            }
-            c_time = this->timer_.toc();
-            if(c_time < this->duration_.boom){
-                this->sleep(this->duration_.boom - c_time);
-                ROS_INFO("[Training_CVSA] Boom added time: %d ms", c_time);
-            }
-            this->hide_boom();
-            this->setevent(boomevent + Events::Off);
-        }else{
-            std::cout << "trial direction: " << trialdirection << " trial hit: " << trialhit << std::endl;
-            this->setevent(boomevent);
-            if(trialclass == Events::Rest){
-                this->show_center_rest(trialhit);
-                this->sleep(this->duration_.boom);
-                this->hide_center_rest();
-            }else{
-                this->show_boom(trialdirection, trialhit);
-                this->sleep(this->duration_.boom);
-                this->hide_boom();
-            }
-            
-            this->setevent(boomevent + Events::Off);
-        }
+        
+        // std::cout << "trial direction: " << trialdirection << " trial hit: " << trialhit << std::endl;
+        this->setevent(boomevent);
+        this->sleep(this->duration_.boom);
+        this->setevent(boomevent + Events::Off);
+        
 
         switch(boomevent) {
             case Events::Hit:
                 count_results[0] = count_results[0]+1;
-                ROS_INFO("[Training_CVSA] Target hit");
+                ROS_INFO("[%s] Target hit", this->name_.c_str());
                 break;
             case Events::Miss:
                 count_results[1] = count_results[1]+1;
-                ROS_INFO("[Training_CVSA] Target miss");
+                ROS_INFO("[%s] Target miss", this->name_.c_str());
                 break;
             case Events::Timeout:
                 count_results[2] = count_results[2]+1;
-                ROS_INFO("[Training_CVSA] Timeout reached. Time elapsed: %d, time duration: %d", c_time, trialduration);
+                ROS_INFO("[%s] Timeout reached. Time elapsed: %d, time duration: %d", this->name_.c_str(), c_time, trialduration);
                 break;
         }
 
 
         /* FINISH the trial */
-        this->hide_center();
         this->setevent(Events::Start + Events::Off);
+        this->setprobs(std::vector<float>(this->nclasses_, 0.0f));
 
         if(ros::ok() == false || this->user_quit_ == true) break;
-        this->trials_keep_.push_back(this->trial_ok_);
 
         // Inter trial interval
-        this->reset();
         this->sleep(this->duration_.iti);
 
         if(ros::ok() == false || this->user_quit_ == true) break;
 
     }
 
-    // close the audio device
-    this->closeAudioDevice();
-
     // Print accuracy
-    ROS_INFO("[Training_CVSA] Hit: %d, Miss: %d, Timeout: %d", count_results[0], count_results[1], count_results[2]);
+    ROS_INFO("[%s] Hit: %d, Miss: %d, Timeout: %d", this->name_.c_str(), count_results[0], count_results[1], count_results[2]);
 
     // End
     if(this->user_quit_ == false)
         this->sleep(this->duration_.end);
-    ROS_INFO("[Training_CVSA] Protocol ended");
-
-    // Publish the trials keep
-    if(this->eye_motion_online_){
-        feedback_bci::Trials_to_keep msg;
-        msg.trials_to_keep = this->trials_keep_;
-        this->pub_trials_keep_.publish(msg);
-    }
+    ROS_INFO("[%s] Protocol ended", this->name_.c_str());
 }
 
 
-void TrainingCVSA::setevent(int event) {
-
+void Training::setevent(int event) {
     this->event_msg_.header.stamp = ros::Time::now();
     this->event_msg_.event = event;
-    this->pub_.publish(this->event_msg_);
+    this->pub_events_.publish(this->event_msg_);
 }
 
-void TrainingCVSA::sleep(int msecs) {
+void Training::sleep(int msecs) {
     std::this_thread::sleep_for(std::chrono::milliseconds(msecs));
 }
 
-int TrainingCVSA::is_target_hit(std::vector<float> input, int elapsed, int duration) {
+int Training::is_target_hit(std::vector<float> input, int elapsed, int duration) {
 
     int target = -1;
 
@@ -483,7 +429,7 @@ int TrainingCVSA::is_target_hit(std::vector<float> input, int elapsed, int durat
             target = i;
             break;
         } else if(elapsed > duration){
-            target = CuePalette.size()-1;
+            target = this->nclasses_ ; 
             break; 
         }
     }

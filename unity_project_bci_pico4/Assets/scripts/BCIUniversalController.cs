@@ -1,5 +1,7 @@
 using UnityEngine;
 using Unity.Robotics.ROSTCPConnector;
+using System.Collections;
+using RosMessageTypes.Std;
 using NeuroOutput = RosMessageTypes.Rosneuro.NeuroOutputMsg;
 using EventMsg = RosMessageTypes.Rosneuro.NeuroEventMsg;
 
@@ -29,22 +31,21 @@ public class BCIUniversalController : MonoBehaviour{
     private float velocityL, velocityR; 
 
     // code for the events
-    private const int OFF = 32768;
-    private const int FIXATION = 786;
-    private const int HIT = 897;
-    private const int MISS = 898;
-    private const int TIMEOUT = 899;
+    private const int OFF         = 32768;
+    private const int FIXATION    = 786;
+    private const int HIT         = 897;
+    private const int MISS        = 898;
+    private const int TIMEOUT     = 899;
     private const int CUE_BL_CVSA = 730; // bottom left
     private const int CUE_BR_CVSA = 731; // bottom right
-    private const int CUE_LH_MI = 769; // left hand motor imagery
-    private const int CUE_RH_MI = 770; // right hand motor imagery
-    private const int CUE_BH = 771; // both hands
-    private const int CUE_BF = 773; // both feet
-    private const int CF = 781;
-    private const int REST = 783;
+    private const int CUE_LH_MI   = 769; // left hand motor imagery
+    private const int CUE_RH_MI   = 770; // right hand motor imagery
+    private const int CUE_BH      = 771; // both hands
+    private const int CUE_BF      = 773; // both feet
+    private const int CF          = 781;
+    private const int REST        = 783;
 
     void Start(){
-        ROSConnection.GetOrCreateInstance().Subscribe<NeuroOutput>("/cvsa/neuroprediction/integrated", callback_data);
         ROSConnection.GetOrCreateInstance().Subscribe<EventMsg>("/events/bus", callback_events);
 
         // check if the objects are assigned
@@ -65,16 +66,35 @@ public class BCIUniversalController : MonoBehaviour{
         ResetPosition();
         switch (tipoParadigma){
             case Paradigma.MI:
+                ROSConnection.GetOrCreateInstance().Subscribe<NeuroOutput>("/mi/neuroprediction/integrated/normalized", callback_data);
                 ResetMaterial_MI();
                 break;
             case Paradigma.CVSA:
+                ROSConnection.GetOrCreateInstance().Subscribe<NeuroOutput>("/cvsa/neuroprediction/integrated/normalized", callback_data);
+                audioL = cuboL.GetComponent<AudioSource>();
+                audioR = cuboR.GetComponent<AudioSource>();
+                ResetAudio();
+                ResetMaterial_CVSA();
+                break;
             case Paradigma.Hybrid:
+                ROSConnection.GetOrCreateInstance().Subscribe<NeuroOutput>("/hybrid/neuroprediction/integrated/normalized", callback_data);
                 audioL = cuboL.GetComponent<AudioSource>();
                 audioR = cuboR.GetComponent<AudioSource>();
                 ResetAudio();
                 ResetMaterial_CVSA();
                 break;
         }
+
+        // set VR ready
+        ROSConnection.GetOrCreateInstance().RegisterPublisher<BoolMsg>("/vr/status/ready");
+        StartCoroutine(SendReadySignalDelayed());
+    }
+
+    IEnumerator SendReadySignalDelayed(){
+        yield return new WaitForSeconds(1.0f);
+        
+        BoolMsg msg = new BoolMsg(true);
+        ROSConnection.GetOrCreateInstance().Publish("/vr/status/ready", msg);
     }
 
     void callback_data(NeuroOutput msg){
@@ -166,7 +186,7 @@ public class BCIUniversalController : MonoBehaviour{
                     break;
                 case Paradigma.Hybrid:
                     ApplyVerticalMovement(currentL, currentR);
-                    ApplyMaterial(currentL, currentR);
+                    // ApplyMaterial(currentL, currentR);
                     ApplyAudio(currentL, currentR);
                     break;
             }

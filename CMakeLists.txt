@@ -8,13 +8,11 @@ find_package(catkin REQUIRED COMPONENTS
              roscpp 
              std_msgs
              rosneuro_msgs
+             std_srvs
              )
 
 find_library(NEUROCHRONO_LIBRARIES neurochrono REQUIRED)
 find_path(NEUROCHRONO_INCLUDE_DIRS neurochrono/Timer.h REQUIRED)
-
-find_path(SNDFILE_INCLUDE_DIR NAMES sndfile.h)
-find_library(SNDFILE_LIBRARY NAMES sndfile)
 
 catkin_package(
   INCLUDE_DIRS 
@@ -25,6 +23,7 @@ catkin_package(
     roscpp
     std_msgs
     rosneuro_msgs
+    std_srvs
   DEPENDS
 )
 
@@ -48,12 +47,10 @@ add_library(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME} 
                       ${catkin_LIBRARIES}
                       ${NEUROCHRONO_LIBRARIES}
-                      ${SNDFILE_LIBRARY}
                       )
 
 add_dependencies(${PROJECT_NAME} 
                  ${catkin_EXPORTED_TARGETS}
-                 # ${PROJECT_NAME}_gencfg
 )
 
 #################
@@ -63,5 +60,4 @@ add_executable(training_node src/training_node.cpp)
 target_link_libraries(training_node  ${PROJECT_NAME}
                                     ${catkin_LIBRARIES}
                                     ${NEUROCHRONO_LIBRARIES}
-                                    ${SNDFILE_LIBRARY}
                                     )
