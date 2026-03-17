@@ -5,11 +5,18 @@ using Unity.Robotics.ROSTCPConnector;
 
 public class MenuManager : MonoBehaviour {
 
-    private bool shouldLoadScene = false;
-    private string targetScene = "";
+    private string ros_command = "";
+    private bool has_new_command = false;
 
     void Start() {
         ROSConnection.GetOrCreateInstance().Subscribe<StringMsg>("/vr/load_scene", OnRosCommandReceived);
+    }
+
+    void OnRosCommandReceived(StringMsg msg) {
+        ros_command = msg.data;
+        if (!string.IsNullOrEmpty(ros_command) && ros_command != "Menu") {
+            has_new_command = true; 
+        }
     }
     
     public void LoadMI() {
@@ -24,17 +31,29 @@ public class MenuManager : MonoBehaviour {
         SceneManager.LoadScene("BCI_HYBRID");
     }
 
-    void OnRosCommandReceived(StringMsg msg) {
-        targetScene = msg.data;
-        if (!string.IsNullOrEmpty(targetScene) && targetScene != "Menu") {
-            shouldLoadScene = true; 
+    void Update() {
+        if (has_new_command) {
+            has_new_command = false;
+            ProcessRosCommand(ros_command);
         }
     }
 
-    void Update() {
-        if (shouldLoadScene) {
-            shouldLoadScene = false;
-            SceneManager.LoadScene(targetScene);
+    void ProcessRosCommand(string command) {
+        Debug.Log("Scene to load: " + command);
+
+        switch (command) {
+            case "mi":
+                LoadMI();
+                break;
+            case "cvsa":
+                LoadCVSA();
+                break;
+            case "hybrid":
+                LoadHybrid();
+                break;
+            default:
+                Debug.LogWarning("ROS command not recognized: " + command);
+                break;
         }
     }
 }
