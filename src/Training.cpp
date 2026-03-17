@@ -330,7 +330,7 @@ void Training::bci_protocol(void){
         while(ros::ok() && this->user_quit_ == false && trialhit == -1) {
 
             c_time = this->timer_.toc();
-            if(this->modality_ == Modality::Calibration) { // PUBLISH THE PROBABILITIES
+            if(this->modality_ == Modality::Calibration) {
                 this->current_input_[idx_class] = this->current_input_[idx_class] + autopilot->step()/2.0f;
                 this->setprobs(this->normalize_input(this->current_input_));
                 this->seq_++; 
@@ -389,7 +389,6 @@ void Training::bci_protocol(void){
 
         /* FINISH the trial */
         this->setevent(Events::Start + Events::Off);
-        this->setprobs(std::vector<float>(this->nclasses_, 0.0f));
 
         if(ros::ok() == false || this->user_quit_ == true) break;
 

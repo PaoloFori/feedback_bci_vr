@@ -160,7 +160,7 @@ public class BCIUniversalController : MonoBehaviour{
                     case Paradigma.Hybrid:
                         ResetPosition();
                         ResetAudio();
-                        ResetMaterial_CVSA();
+                        ResetMaterial_MI();
                         break;
                 }
                 break;
@@ -195,6 +195,8 @@ public class BCIUniversalController : MonoBehaviour{
 
 
     void ResetAudio(){
+        targetL = 0f;
+        targetR = 0f;
         audioL.volume = 0f;
         audioR.volume = 0f;
     }
@@ -205,11 +207,15 @@ public class BCIUniversalController : MonoBehaviour{
     }
 
     void ResetMaterial_CVSA(){
+        targetL = 0.5f;
+        targetR = 0.5f;
         matL.SetFloat("_Sharpness", 0.5f);
         matR.SetFloat("_Sharpness", 0.5f);
     }
 
     void ResetPosition(){
+        targetL = 0.5f;
+        targetR = 0.5f;
         cuboL.transform.localPosition = new Vector3(-1.5f, 1.65f, 4f);
         cuboR.transform.localPosition = new Vector3(1.5f, 1.65f, 4f);
     }
