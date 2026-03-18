@@ -30,6 +30,10 @@ public class BCIUniversalController : MonoBehaviour{
     private float currentL, currentR;
     private float velocityL, velocityR; 
 
+    private const float init_percentage = 0.5f;
+    private readonly Vector3 initPosL = new Vector3(-1.5f, 1.65f, 4f);
+    private readonly Vector3 initPosR = new Vector3(1.5f, 1.65f, 4f);
+
     // code for the events
     private const int OFF         = 32768;
     private const int FIXATION    = 786;
@@ -73,6 +77,10 @@ public class BCIUniversalController : MonoBehaviour{
                 ROSConnection.GetOrCreateInstance().Subscribe<NeuroOutput>("/cvsa/neuroprediction/integrated/normalized", callback_data);
                 audioL = cuboL.GetComponent<AudioSource>();
                 audioR = cuboR.GetComponent<AudioSource>();
+                audioL.spatialBlend = 0.0f;
+                audioR.spatialBlend = 0.0f;
+                audioL.panStereo = -1f;  
+                audioR.panStereo =  1f;
                 ResetAudio();
                 ResetMaterial_CVSA();
                 break;
@@ -80,8 +88,12 @@ public class BCIUniversalController : MonoBehaviour{
                 ROSConnection.GetOrCreateInstance().Subscribe<NeuroOutput>("/hybrid/neuroprediction/integrated/normalized", callback_data);
                 audioL = cuboL.GetComponent<AudioSource>();
                 audioR = cuboR.GetComponent<AudioSource>();
+                audioL.spatialBlend = 0.0f;
+                audioR.spatialBlend = 0.0f;
+                audioL.panStereo = -1f;  
+                audioR.panStereo =  1f;
                 ResetAudio();
-                ResetMaterial_CVSA();
+                ResetMaterial_MI();
                 break;
         }
 
@@ -207,38 +219,39 @@ public class BCIUniversalController : MonoBehaviour{
     }
 
     void ResetMaterial_CVSA(){
-        targetL = 0.5f;
-        targetR = 0.5f;
-        matL.SetFloat("_Sharpness", 0.5f);
-        matR.SetFloat("_Sharpness", 0.5f);
+        targetL = init_percentage;
+        targetR = init_percentage;
+        matL.SetFloat("_Sharpness", init_percentage);
+        matR.SetFloat("_Sharpness", init_percentage);
     }
 
     void ResetPosition(){
-        targetL = 0.5f;
-        targetR = 0.5f;
-        cuboL.transform.localPosition = new Vector3(-1.5f, 1.65f, 4f);
-        cuboR.transform.localPosition = new Vector3(1.5f, 1.65f, 4f);
+        targetL = init_percentage;
+        targetR = init_percentage;
+        cuboL.transform.localPosition = initPosL;
+        cuboR.transform.localPosition = initPosR;
     }
 
     void ApplyVerticalMovement(float L, float R) {
         float escursione = 1.0f;
-        float offsetL = Mathf.Max(0, (L - 0.5f) * 2.0f); 
-        float offsetR = Mathf.Max(0, (R - 0.5f) * 2.0f);
+        float offsetL = Mathf.Max(0, (L - init_percentage) * (1.0f/init_percentage)); 
+        float offsetR = Mathf.Max(0, (R - init_percentage) * (1.0f/init_percentage));
 
-        float yL = 1.65f + (offsetL * escursione);
-        float yR = 1.65f + (offsetR * escursione);
+        float yL = initPosL.y + (offsetL * escursione);
+        float yR = initPosR.y + (offsetR * escursione);
 
-        cuboL.transform.localPosition = new Vector3(-1.5f, yL, 4f);
-        cuboR.transform.localPosition = new Vector3(1.5f, yR, 4f);
+        cuboL.transform.localPosition = new Vector3(initPosL.x, yL, initPosL.z);
+        cuboR.transform.localPosition = new Vector3(initPosR.x, yR, initPosR.z);
     }
 
     void ApplyMaterial(float L, float R){
-        matL.SetFloat("_Sharpness", L);
-        matR.SetFloat("_Sharpness", R);
+        float max_value = Mathf.Max(L, R);
+        matL.SetFloat("_Sharpness", max_value);
+        matR.SetFloat("_Sharpness", max_value);
     }
 
     void ApplyAudio(float L, float R){
-        audioL.volume = L;
-        audioR.volume = R;
+        audioL.volume = Mathf.Max(0, (L - init_percentage) * (1.0f/init_percentage));
+        audioR.volume = Mathf.Max(0, (R - init_percentage) * (1.0f/init_percentage));
     }
 }
