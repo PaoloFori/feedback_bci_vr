@@ -35,19 +35,21 @@ public class BCIUniversalController : MonoBehaviour{
     private readonly Vector3 initPosR = new Vector3(1.5f, 1.65f, 4f);
 
     // code for the events
-    private const int OFF         = 32768;
-    private const int FIXATION    = 786;
-    private const int HIT         = 897;
-    private const int MISS        = 898;
-    private const int TIMEOUT     = 899;
-    private const int CUE_BL_CVSA = 730; // bottom left
-    private const int CUE_BR_CVSA = 731; // bottom right
-    private const int CUE_LH_MI   = 769; // left hand motor imagery
-    private const int CUE_RH_MI   = 770; // right hand motor imagery
-    private const int CUE_BH      = 771; // both hands
-    private const int CUE_BF      = 773; // both feet
-    private const int CF          = 781;
-    private const int REST        = 783;
+    private const int OFF           = 32768;
+    private const int FIXATION      = 786;
+    private const int HIT           = 897;
+    private const int MISS          = 898;
+    private const int TIMEOUT       = 899;
+    private const int CUE_BL_CVSA   = 730; // bottom left
+    private const int CUE_BR_CVSA   = 731; // bottom right
+    private const int CUE_LH_MI     = 769; // left hand motor imagery
+    private const int CUE_RH_MI     = 770; // right hand motor imagery
+    private const int CUE_BH_MI     = 771; // both hands
+    private const int CUE_BF_MI     = 773; // both feet
+    private const int CUE_L_CVSA_MI = 750; // left MI and CVSA
+    private const int CUE_R_CVSA_MI = 751; // right MI and CVSA
+    private const int CF            = 781;
+    private const int REST          = 783;
 
     void Start(){
         ROSConnection.GetOrCreateInstance().Subscribe<EventMsg>("/events/bus", callback_events);
@@ -127,13 +129,15 @@ public class BCIUniversalController : MonoBehaviour{
                 break;
             case CUE_LH_MI:
             case CUE_BL_CVSA:
-            case CUE_BH:
+            case CUE_L_CVSA_MI:
+            case CUE_BH_MI:
                 centerPoint.SetActive(true);
                 audioSourceCues.PlayOneShot(audioCueLeft);
                 break;
             case CUE_RH_MI:
             case CUE_BR_CVSA:
-            case CUE_BF:
+            case CUE_R_CVSA_MI:
+            case CUE_BF_MI:
                 centerPoint.SetActive(true);
                 audioSourceCues.PlayOneShot(audioCueRight);
                 break;

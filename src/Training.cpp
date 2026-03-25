@@ -323,6 +323,7 @@ void Training::bci_protocol(void){
         if(this->modality_ == Modality::Evaluation) {
             std_srvs::Empty srv;
             this->reset_integrator_.call(srv);
+            this->setprobs(this->normalize_input(this->current_input_));
         }else{
             this->current_input_ = std::vector<float>(this->nclasses_, 0.5f); 
         }
@@ -354,11 +355,26 @@ void Training::bci_protocol(void){
 
         /* BOOM */
         if(trialdirection == trialhit){
+            std::cout << "current input: ";
+            for(size_t i = 0; i < this->current_input_.size(); i++) {
+                std::cout << this->current_input_[i] << " ";
+            }
+            std::cout << std::endl;
             boomevent = Events::Hit;
         }else if(trialhit != this->nclasses_){
+            std::cout << "current input: ";
+            for(size_t i = 0; i < this->current_input_.size(); i++) {
+                std::cout << this->current_input_[i] << " ";
+            }
+            std::cout << std::endl;
             boomevent = Events::Miss;
         }else{
             if(trialclass != Events::Rest){
+            std::cout << "current input: ";
+            for(size_t i = 0; i < this->current_input_.size(); i++) {
+                std::cout << this->current_input_[i] << " ";
+            }
+            std::cout << std::endl;
                 boomevent = Events::Timeout;
             }else{
                 boomevent = Events::Hit; // consider a hit if the rest class is presented and timeout occurs
