@@ -77,7 +77,6 @@ class Training {
         void bci_protocol(void);
 
     private:
-        std::vector<float>  normalize_input(const std::vector<float>& input);
         std::vector<std::vector<float>> str2matrix(const std::string& str);
 
     private:
@@ -86,7 +85,6 @@ class Training {
         ros::Subscriber sub_probs_;
         ros::Publisher pub_events_;
         ros::Publisher pub_probs_;
-        ros::ServiceClient reset_integrator_;
         ros::Subscriber sub_vr_ready_;
 
         std::string name_;

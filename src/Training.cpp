@@ -15,7 +15,7 @@ bool Training::configure(void) {
     this->is_vr_ready_ = false;
     this->sub_vr_ready_ = this->nh_.subscribe("/vr/status/ready", 1, &Training::onVrReady, this);
     
-    std::string modality, paradigm, topic_normalized, topic_raw;
+    std::string modality, paradigm, topic_normalized;
     if(this->p_nh_.getParam("modality", modality) == false) {
         ROS_ERROR("[%s] Parameter 'modality' is mandatory", this->name_.c_str());
         return false;
@@ -26,20 +26,16 @@ bool Training::configure(void) {
     }
 
     topic_normalized = "/" + paradigm + "/neuroprediction/integrated/normalized";
-    topic_raw = "/" + paradigm + "/neuroprediction/integrated/raw";
     if(modality.compare("calibration") == 0) {
         this->modality_ = Modality::Calibration;
         this->pub_probs_ = this->nh_.advertise<rosneuro_msgs::NeuroOutput>(topic_normalized, 1);
     } else if(modality.compare("evaluation") == 0) {
         this->modality_ = Modality::Evaluation;
-        this->pub_probs_ = this->nh_.advertise<rosneuro_msgs::NeuroOutput>(topic_normalized, 1);
-        this->sub_probs_ = this->nh_.subscribe(topic_raw, 1, &Training::on_received_data, this);
+        this->sub_probs_ = this->nh_.subscribe(topic_normalized, 1, &Training::on_received_data, this);
     } else {
         ROS_ERROR("[%s] Unknown modality provided", this->name_.c_str());
         return false;
     }
-
-    this->reset_integrator_ = this->nh_.serviceClient<std_srvs::Empty>("/integrator/reset");
 
     // Getting classes and trials
     if(this->p_nh_.getParam("classes", this->classes_) == false) {
@@ -47,18 +43,8 @@ bool Training::configure(void) {
         return false;
     } 
     this->nclasses_ = this->classes_.size();
-    if(this->modality_ == Modality::Calibration) {
-        this->thresholds_ = std::vector<float>(this->nclasses_, 1.0f);
-    } else {
-        if(this->p_nh_.getParam("thresholds", this->thresholds_) == false) {
-            ROS_ERROR("[%s] Parameter 'thresholds' is mandatory for evaluation modality", this->name_.c_str());
-            return false;
-        } 
-        if(this->thresholds_.size() != this->nclasses_) {
-            ROS_ERROR("[%s] Number of thresholds must be provided for each class", this->name_.c_str());
-            return false;
-        }
-    }
+    this->thresholds_ = std::vector<float>(this->nclasses_, 1.0f);
+
 
     if(this->p_nh_.getParam("trials", this->trials_per_class_) == false) {
         ROS_ERROR("[%s] Parameter 'trials' is mandatory", this->name_.c_str());
@@ -191,7 +177,7 @@ void Training::on_received_data(const rosneuro_msgs::NeuroOutput& msg) {
 void Training::onVrReady(const std_msgs::Bool::ConstPtr& msg) {
     if (msg->data == true && !this->is_vr_ready_) {
         this->is_vr_ready_ = true;
-        ROS_INFO("[]%s] VR environment is ready. Starting the protocol.", this->name_.c_str());
+        ROS_INFO("[%s] VR environment is ready. Starting the protocol.", this->name_.c_str());
     }
 }
 
@@ -212,23 +198,9 @@ void Training::setprobs(std::vector<float> probs) {
     this->pub_probs_.publish(msg);
 }
 
-std::vector<float>  Training::normalize_input(const std::vector<float>& input) {
-    std::vector<float> normalized_output(input.size(), 0.0f);
-
-    for (size_t i = 0; i < input.size(); ++i) {
-        if (this->thresholds_[i] > 0.0f) {
-            float mapped_val = input[i] / this->thresholds_[i];
-            
-            normalized_output[i] = std::max(0.0f, std::min(1.0f, mapped_val));
-        }
-    }
-
-    return normalized_output;
-}
-
 void Training::run(void){
     ROS_INFO("[%s] Waiting for VR environment to be ready...", this->name_.c_str());
-    ros::Rate r(10);
+    ros::Rate r(512);
     while(ros::ok() && this->is_vr_ready_ == false) {
         ros::spinOnce();
         r.sleep();
@@ -311,33 +283,20 @@ void Training::bci_protocol(void){
 
 
         /* CONTINUOUS FEEDBACK */
-        this->timer_.tic();
-
-        // Consuming old messages
         ros::spinOnce();
 
         // Send cf event
         this->setevent(Events::CFeedback);
-
-        // Set up initial probabilities
-        if(this->modality_ == Modality::Evaluation) {
-            std_srvs::Empty srv;
-            this->reset_integrator_.call(srv);
-            this->setprobs(this->normalize_input(this->current_input_));
-        }else{
-            this->current_input_ = std::vector<float>(this->nclasses_, 0.5f); 
-        }
+        this->timer_.tic();
+        this->current_input_ = std::vector<float>(this->nclasses_, 1.0f / this->nclasses_); 
 
         while(ros::ok() && this->user_quit_ == false && trialhit == -1) {
 
             c_time = this->timer_.toc();
             if(this->modality_ == Modality::Calibration) {
                 this->current_input_[idx_class] = this->current_input_[idx_class] + autopilot->step()/2.0f;
-                this->setprobs(this->normalize_input(this->current_input_));
+                this->setprobs(this->current_input_);
                 this->seq_++; 
-            } else if(this->modality_ == Modality::Evaluation) {
-                this->setprobs(this->normalize_input(this->current_input_));
-                //ROS_INFO("Probabilities: %f %f Thresholds: %f %f", this->current_input_[0], this->current_input_[1], this->thresholds_[0], this->thresholds_[1]);
             }
 
             trialhit = this->is_target_hit(this->current_input_,  
@@ -355,26 +314,11 @@ void Training::bci_protocol(void){
 
         /* BOOM */
         if(trialdirection == trialhit){
-            std::cout << "current input: ";
-            for(size_t i = 0; i < this->current_input_.size(); i++) {
-                std::cout << this->current_input_[i] << " ";
-            }
-            std::cout << std::endl;
             boomevent = Events::Hit;
         }else if(trialhit != this->nclasses_){
-            std::cout << "current input: ";
-            for(size_t i = 0; i < this->current_input_.size(); i++) {
-                std::cout << this->current_input_[i] << " ";
-            }
-            std::cout << std::endl;
             boomevent = Events::Miss;
         }else{
             if(trialclass != Events::Rest){
-            std::cout << "current input: ";
-            for(size_t i = 0; i < this->current_input_.size(); i++) {
-                std::cout << this->current_input_[i] << " ";
-            }
-            std::cout << std::endl;
                 boomevent = Events::Timeout;
             }else{
                 boomevent = Events::Hit; // consider a hit if the rest class is presented and timeout occurs
@@ -440,7 +384,7 @@ int Training::is_target_hit(std::vector<float> input, int elapsed, int duration)
     int target = -1;
 
     for(int i = 0; i < this->nclasses_; i++) {
-        if(input.at(i) >= this->thresholds_.at(i)) { 
+        if(input.at(i) >= this->thresholds_.at(i) - 0.001f) { 
             target = i;
             break;
         } else if(elapsed > duration){

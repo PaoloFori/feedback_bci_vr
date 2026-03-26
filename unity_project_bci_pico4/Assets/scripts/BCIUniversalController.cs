@@ -30,6 +30,8 @@ public class BCIUniversalController : MonoBehaviour{
     private float currentL, currentR;
     private float velocityL, velocityR; 
 
+    private bool has_new_input = false;
+
     private const float init_percentage = 0.5f;
     private readonly Vector3 initPosL = new Vector3(-1.5f, 1.65f, 4f);
     private readonly Vector3 initPosR = new Vector3(1.5f, 1.65f, 4f);
@@ -115,6 +117,8 @@ public class BCIUniversalController : MonoBehaviour{
         if (msg.softpredict.data.Length < 2) return;
         targetL = (float)msg.softpredict.data[0];
         targetR = (float)msg.softpredict.data[1];
+
+        has_new_input = true;
     }
 
     void callback_events(EventMsg msg){
@@ -186,12 +190,15 @@ public class BCIUniversalController : MonoBehaviour{
     // for unity update rate
     void Update(){
 
+        if (!inCF) return;
+
         // SmoothDamp calcola la transizione perfetta
         currentL = Mathf.SmoothDamp(currentL, targetL, ref velocityL, smoothTime);
         currentR = Mathf.SmoothDamp(currentR, targetR, ref velocityR, smoothTime);
 
         // execute application of the paradigm
-        if(inCF){
+        if(has_new_input){
+            has_new_input = false;
             switch (tipoParadigma){
                 case Paradigma.MI:
                     ApplyVerticalMovement(currentL, currentR);
@@ -211,6 +218,8 @@ public class BCIUniversalController : MonoBehaviour{
 
 
     void ResetAudio(){
+        currentL = 0f;
+        currentR = 0f;
         targetL = 0f;
         targetR = 0f;
         audioL.volume = 0f;
@@ -223,6 +232,8 @@ public class BCIUniversalController : MonoBehaviour{
     }
 
     void ResetMaterial_CVSA(){
+        currentL = init_percentage;
+        currentR = init_percentage;
         targetL = init_percentage;
         targetR = init_percentage;
         matL.SetFloat("_Sharpness", init_percentage);
@@ -230,6 +241,8 @@ public class BCIUniversalController : MonoBehaviour{
     }
 
     void ResetPosition(){
+        currentL = init_percentage;
+        currentR = init_percentage;
         targetL = init_percentage;
         targetR = init_percentage;
         cuboL.transform.localPosition = initPosL;
