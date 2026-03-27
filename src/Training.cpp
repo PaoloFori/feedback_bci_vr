@@ -259,7 +259,7 @@ void Training::bci_protocol(void){
             autopilot->set(0.0f, trialthreshold, trialduration);
         }
 
-        ROS_INFO("[Training_CVSA] Trial %d/%d (class: %d | duration cf: %d ms)", trialnumber, this->trialsequence_.size(), trialclass, trialduration);
+        ROS_INFO("[%s] Trial %d/%d (class: %d | duration cf: %d ms)", this->name_.c_str(), trialnumber, this->trialsequence_.size(), trialclass, trialduration);
         this->setevent(Events::Start);
         this->sleep(this->duration_.start);
         //this->setevent(Events::Start + Events::Off);

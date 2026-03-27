@@ -10,7 +10,7 @@ int main(int argc, char** argv) {
     feedback::Training training;
 
     if(training.configure() == false) {
-        ROS_ERROR("Training configuration failed");
+        ROS_ERROR("[Training] Configuration failed");
         ros::shutdown();
         return 0;
     }
