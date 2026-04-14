@@ -168,7 +168,12 @@ void Training::on_received_data(const rosneuro_msgs::NeuroOutput& msg) {
     }
 
     // Set the new incoming data
-    this->current_input_ = msg.softpredict.data;
+    std::vector<float> fixed_input(this->nclasses_, 0.0f);
+    for(size_t i = 0; i < msg.decoder.classes.size(); i++){
+         int idx = this->class2index(msg.decoder.classes[i]);
+         if(idx != -1) fixed_input[idx] = msg.softpredict.data[i];
+    }
+    this->current_input_ = fixed_input;
     this->seq_ = msg.header.seq;
 
     //std::cout << "Received data: " << this->current_input_[0] << " " << this->current_input_[1] << std::endl;  
@@ -294,7 +299,7 @@ void Training::bci_protocol(void){
 
             c_time = this->timer_.toc();
             if(this->modality_ == Modality::Calibration) {
-                this->current_input_[idx_class] = this->current_input_[idx_class] + autopilot->step()/2.0f;
+                this->current_input_[idx_class] = this->current_input_[idx_class] + autopilot->step() / (float) this->nclasses_;
                 this->setprobs(this->current_input_);
                 this->seq_++; 
             }
@@ -380,20 +385,17 @@ void Training::sleep(int msecs) {
 }
 
 int Training::is_target_hit(std::vector<float> input, int elapsed, int duration) {
-
-    int target = -1;
-
     for(int i = 0; i < this->nclasses_; i++) {
         if(input.at(i) >= this->thresholds_.at(i) - 0.001f) { 
-            target = i;
-            break;
-        } else if(elapsed > duration){
-            target = this->nclasses_ ; 
-            break; 
+            return i;
         }
     }
     
-    return target;
+    if(elapsed > duration) {
+        return this->nclasses_;
+    }
+
+    return -1;
 }
 
 
