@@ -38,10 +38,13 @@ The directory `unity_project_bci_pico4` contains the complete Unity project desi
   * **Covert Visual Spatial Attention (CVSA)**: The user focuses visual attention spatially toward the left or the right cube. This focus controls the transparency/alpha channel. A successful CVSA hit causes the target cube to **materialize** (become fully opaque) from a transparent state.
   * **Hybrid Approach**: Fuses both challenges simultaneously. The user must sustain peripheral CVSA focus on the target side (left or right) to **materialize and visually lock** the corresponding cube, while simultaneously applying MI to **translate it vertically** toward the target position.
 
-### Software Configuration
-* **Unity Version:** Developed and tested on Unity **2022 LTS**.
-* **VR Runtime:** Fully tested with **SteamVR** (via OpenXR plugin). Ensure the SteamVR runtime is active before launching the Unity project.
-
----
-
-**Note on Setup**: Ensure your `ros_tcp_endpoint` IP matches the Unity network config (`ROS_manager`) before launching the system to guarantee seamless feedback rendering.
+### VR Device & Unity Configuration
+* **Tested Hardware:** The entire tracking and feedback system has been developed and comprehensively tested using a **Pico 4** VR headset.
+* **OpenXR & Project Settings:**
+    1. Go to `Edit` -> `Project Settings` -> `XR Plugin Management`.
+    2. In the **Windows (PC)** tab, ensure **OpenXR** is selected.
+    3. Under OpenXR, make sure to add a compatible **Controller Profile** (e.g., *Oculus Touch Controller Profile*, which maps correctly for the Pico 4 controllers).
+    4. If streaming from a PC, ensure your chosen VR runtime (e.g., SteamVR or Pico Streaming Assistant) is active before hitting Play.
+* **Audio Setup:** To correctly hear the spatial auditory feedback and event sound cues when testing directly inside the Unity Editor, make sure to deactivate the **"Mute Audio"** button (or select "Unmute") located at the top of the **Game** window tab.
+* **Scene Adjustments:** Some minor environmental tweaks might be necessary depending on the subject's anatomy and sitting position. For instance, adjusting the vertical position of the **"Finish bar"** in the Inspector for the **MI** and **Hybrid** paradigms to ensure they represent a comfortable visual threshold.
+* **Network Setup:** Ensure that the IP address perfectly matches between the **'Robotics'** / **'ROS_manager'** script fields inside the Unity scene and the `ros_tcp_endpoint` on the ROS side to guarantee seamless telemetry rendering.
