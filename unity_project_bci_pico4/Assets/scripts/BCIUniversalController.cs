@@ -245,6 +245,8 @@ public class BCIUniversalController : MonoBehaviour{
         currentR = init_percentage;
         targetL = init_percentage;
         targetR = init_percentage;
+        velocityL = 0f;
+        velocityR = 0f;
         cuboL.transform.localPosition = initPosL;
         cuboR.transform.localPosition = initPosR;
     }
