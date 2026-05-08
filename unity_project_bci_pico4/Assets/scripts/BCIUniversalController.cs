@@ -264,9 +264,10 @@ public class BCIUniversalController : MonoBehaviour{
     }
 
     void ApplyMaterial(float L, float R){
-        float max_value = Mathf.Max(L, R);
-        matL.SetFloat("_Sharpness", max_value);
-        matR.SetFloat("_Sharpness", max_value);
+        float max_value_L = Mathf.Max(L, init_percentage);
+        float max_value_R = Mathf.Max(R, init_percentage);
+        matL.SetFloat("_Sharpness", max_value_L);
+        matR.SetFloat("_Sharpness", max_value_R);
     }
 
     void ApplyAudio(float L, float R){
