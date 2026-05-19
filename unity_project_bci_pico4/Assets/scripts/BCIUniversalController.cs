@@ -150,6 +150,7 @@ public class BCIUniversalController : MonoBehaviour{
                 audioSourceCues.PlayOneShot(audioCueRest);
                 break;
             case CF:
+                has_new_input = false;
                 inCF = true;
                 break;
             case OFF + CF:
@@ -218,10 +219,6 @@ public class BCIUniversalController : MonoBehaviour{
 
 
     void ResetAudio(){
-        currentL = 0f;
-        currentR = 0f;
-        targetL = 0f;
-        targetR = 0f;
         audioL.volume = 0f;
         audioR.volume = 0f;
     }
