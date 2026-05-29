@@ -33,8 +33,8 @@ public class BCIUniversalController : MonoBehaviour{
     private bool has_new_input = false;
 
     private const float init_percentage = 0.5f;
-    private readonly Vector3 initPosL = new Vector3(-1.5f, 1.65f, 4f);
-    private readonly Vector3 initPosR = new Vector3(1.5f, 1.65f, 4f);
+    private Vector3 initPosL;
+    private Vector3 initPosR;
 
     // code for the events
     private const int OFF           = 32768;
@@ -67,6 +67,10 @@ public class BCIUniversalController : MonoBehaviour{
         // memorize elements for performance
         matL = cuboL.GetComponent<MeshRenderer>().material;
         matR = cuboR.GetComponent<MeshRenderer>().material;
+
+        // read initial positions from editor
+        initPosL = cuboL.transform.localPosition;
+        initPosR = cuboR.transform.localPosition;
 
         // At the beginning, ensure all hide
         fixationCross.SetActive(false);

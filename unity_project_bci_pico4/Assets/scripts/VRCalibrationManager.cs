@@ -56,7 +56,19 @@ public class VRCalibrationManager : MonoBehaviour
             xrOrigin.position -= targetHeadPosition.forward * moveSpeed * Time.deltaTime;
         }
 
-        // 4. SALVARE PER IL FUTURO (Tasto Invio / Enter)
+        // 4. ALZARE IL GIOCATORE (E)
+        if (Input.GetKey(KeyCode.E))
+        {
+            xrOrigin.position += Vector3.up * moveSpeed * Time.deltaTime;
+        }
+
+        // 5. ABBASSARE IL GIOCATORE (Q)
+        if (Input.GetKey(KeyCode.Q))
+        {
+            xrOrigin.position -= Vector3.up * moveSpeed * Time.deltaTime;
+        }
+
+        // 6. SALVARE PER IL FUTURO (Tasto Invio / Enter)
         if (Input.GetKeyDown(KeyCode.Return))
         {
             SaveCalibration();

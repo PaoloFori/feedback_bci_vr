@@ -15,7 +15,7 @@ bool Training::configure(void) {
     this->is_vr_ready_ = false;
     this->sub_vr_ready_ = this->nh_.subscribe("/vr/status/ready", 1, &Training::onVrReady, this);
     
-    std::string modality, paradigm, topic_normalized;
+    std::string modality, paradigm, topic_raw, topic_normalized;
     if(this->p_nh_.getParam("modality", modality) == false) {
         ROS_ERROR("[%s] Parameter 'modality' is mandatory", this->name_.c_str());
         return false;
@@ -25,25 +25,39 @@ bool Training::configure(void) {
         return false;
     }
 
+    topic_raw = "/" + paradigm + "/neuroprediction/integrated/raw";
     topic_normalized = "/" + paradigm + "/neuroprediction/integrated/normalized";
     if(modality.compare("calibration") == 0) {
         this->modality_ = Modality::Calibration;
-        this->pub_probs_ = this->nh_.advertise<rosneuro_msgs::NeuroOutput>(topic_normalized, 1);
+        this->pub_probs_ = this->nh_.advertise<rosneuro_msgs::NeuroOutput>(topic_raw, 1);
     } else if(modality.compare("evaluation") == 0) {
         this->modality_ = Modality::Evaluation;
-        this->sub_probs_ = this->nh_.subscribe(topic_normalized, 1, &Training::on_received_data, this);
+        this->sub_probs_ = this->nh_.subscribe(topic_raw, 1, &Training::on_received_data, this);
     } else {
         ROS_ERROR("[%s] Unknown modality provided", this->name_.c_str());
         return false;
     }
+    this->pub_probs_norm_ = this->nh_.advertise<rosneuro_msgs::NeuroOutput>(topic_normalized, 1);
 
-    // Getting classes and trials
+    // Getting classes and thresholds
     if(this->p_nh_.getParam("classes", this->classes_) == false) {
         ROS_ERROR("[%s] Parameter 'classes' is mandatory", this->name_.c_str());
         return false;
     } 
     this->nclasses_ = this->classes_.size();
-    this->thresholds_ = std::vector<float>(this->nclasses_, 1.0f);
+
+    if(this->modality_ == Modality::Calibration){
+        this->thresholds_ = std::vector<float>(this->nclasses_, 1.0f);
+    }else{
+        if(this->p_nh_.getParam("thresholds", this->thresholds_) == false) {
+            ROS_ERROR("[%s] Parameter 'thresholds' is mandatory", this->name_.c_str());
+            return false;
+        } 
+        if(this->thresholds_.size() != this->nclasses_){
+            ROS_ERROR("[%s] The threshold per class must be provided for each class", this->name_.c_str());
+            return false;
+        }
+    }
 
 
     if(this->p_nh_.getParam("trials", this->trials_per_class_) == false) {
@@ -148,6 +162,7 @@ std::vector<std::vector<float>> Training::str2matrix(const std::string& str) {
 }
 
 void Training::on_received_data(const rosneuro_msgs::NeuroOutput& msg) {
+    rosneuro_msgs::NeuroOutput msg_copy;
 
     // Check if the incoming message has the provided classes
     bool class_not_found = false;
@@ -174,7 +189,11 @@ void Training::on_received_data(const rosneuro_msgs::NeuroOutput& msg) {
          if(idx != -1) fixed_input[idx] = msg.softpredict.data[i];
     }
     this->current_input_ = fixed_input;
-    this->seq_ = msg.header.seq;
+
+    std::vector<float> norm_probs = this->normalize_input(this->current_input_);
+    msg_copy = msg;
+    msg_copy.softpredict.data = norm_probs;
+    this->pub_probs_norm_.publish(msg_copy);
 
     //std::cout << "Received data: " << this->current_input_[0] << " " << this->current_input_[1] << std::endl;  
 }
@@ -184,6 +203,26 @@ void Training::onVrReady(const std_msgs::Bool::ConstPtr& msg) {
         this->is_vr_ready_ = true;
         ROS_INFO("[%s] VR environment is ready. Starting the protocol.", this->name_.c_str());
     }
+}
+
+std::vector<float> Training::normalize_input(const std::vector<float>& input) {
+    float p_rest = 1.0f / (float)this->classes_.size();
+    std::vector<float> normalized_output(input.size(), p_rest);
+
+    for (size_t i = 0; i < input.size(); ++i) {
+        if (this->thresholds_[i] > p_rest) { 
+                
+            float slope = (1.0f - p_rest) / (this->thresholds_[i] - p_rest);
+
+            float mapped_val = p_rest + (input[i] - p_rest) * slope;
+            normalized_output[i] = std::max(0.0f, std::min(1.0f, mapped_val));
+
+        } else {
+            normalized_output[i] = input[i]; 
+        }
+    }
+        
+    return normalized_output;
 }
 
 void Training::setprobs(std::vector<float> probs) {
@@ -200,8 +239,15 @@ void Training::setprobs(std::vector<float> probs) {
     }
     msg.hardpredict.data = hardpredict;
 
-    this->pub_probs_.publish(msg);
+    if(this->modality_==Modality::Calibration){
+        this->pub_probs_.publish(msg);
+    }
+
+    std::vector<float> norm_probs = this->normalize_input(probs);
+    msg.softpredict.data = norm_probs;
+    this->pub_probs_norm_.publish(msg);
 }
+
 
 void Training::run(void){
     ROS_INFO("[%s] Waiting for VR environment to be ready...", this->name_.c_str());
@@ -299,11 +345,11 @@ void Training::bci_protocol(void){
 
             c_time = this->timer_.toc();
             if(this->modality_ == Modality::Calibration) {
-                this->current_input_[idx_class] = this->current_input_[idx_class] + autopilot->step() / (float) this->nclasses_;
+                this->current_input_[idx_class] = this->current_input_[idx_class] + autopilot->step() / (float) this->nclasses_;   
                 this->setprobs(this->current_input_);
                 this->seq_++; 
             }
-
+            
             trialhit = this->is_target_hit(this->current_input_,  
                                             c_time, trialduration);
 

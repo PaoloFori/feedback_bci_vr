@@ -78,6 +78,7 @@ class Training {
 
     private:
         std::vector<std::vector<float>> str2matrix(const std::string& str);
+        std::vector<float>  normalize_input(const std::vector<float>& input);
 
     private:
         ros::NodeHandle nh_;
@@ -85,6 +86,7 @@ class Training {
         ros::Subscriber sub_probs_;
         ros::Publisher pub_events_;
         ros::Publisher pub_probs_;
+        ros::Publisher pub_probs_norm_;
         ros::Subscriber sub_vr_ready_;
 
         std::string name_;
