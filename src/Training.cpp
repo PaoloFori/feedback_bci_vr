@@ -72,7 +72,7 @@ bool Training::configure(void) {
     ros::param::param("~duration/begin",            this->duration_.begin,             5000);
     ros::param::param("~duration/start",            this->duration_.start,             1000);
     ros::param::param("~duration/fixation",         this->duration_.fixation,          2000);
-    ros::param::param("~duration/cue",              this->duration_.cue,               1000);
+    ros::param::param("~duration/cue",              this->duration_.cue,               1500);
     ros::param::param("~duration/feedback_min",     this->duration_.feedback_min,      4000); // duration of cf
     ros::param::param("~duration/feedback_max",     this->duration_.feedback_max,      5500);
     ros::param::param("~duration/boom",             this->duration_.boom,              1500);
